@@ -7,7 +7,6 @@ test('Add Workflow', async ({ page }) => {
         page.locator('i.portal-alert-popup-close-box__button'),
         async (locator) => await locator.click()
     );
-
     // Open Step URL
     await page.goto("https://jlp-test-step.mdm.stibosystems.com/#");
 

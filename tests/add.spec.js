@@ -102,10 +102,9 @@ test('Add Workflow', async ({ page }) => {
   await safeClick(page, okButton);
   await waitClosed(okButton);
 
-  // click on allocate barcode tab
-  const allocateBarcodesTab = page.locator("//span[normalize-space()='Allocate Barcodes']");
-  await allocateBarcodesTab.waitFor({ state: 'visible', timeout: 15000 });
-  await safeClick(page, allocateBarcodesTab);
+  // NOTE: Allocate Barcodes moved to just before Save & Submit — see below.
+  // Clicking it here triggered multiple page reloads that interfered with
+  // the Hierarchy / Initial Style steps that follow.
 
   // click on hierarchy
   const hierarchyTab = page.locator(
@@ -196,6 +195,22 @@ test('Add Workflow', async ({ page }) => {
   await washingSelect.waitFor({ state: 'visible' });
   await washingSelect.selectOption({ index: 7 });
 
+  // click on allocate barcode tab — moved here from right after Phase,
+  // since this click can trigger 2-3 page reloads (each with its own
+  // warning popup). The addLocatorHandler registered at the top keeps
+  // auto-closing those warnings as they appear; we just need to wait
+  // for the page to actually settle before submitting.
+  const allocateBarcodesTab = page.locator("//span[normalize-space()='Allocate Barcodes']");
+  await allocateBarcodesTab.waitFor({ state: 'visible', timeout: 15000 });
+  await safeClick(page, allocateBarcodesTab);
+
+  // Wait for a real signal that the reload cycle finished, rather than a
+  // blind timeout: the Save&Submit button being visible AND enabled means
+  // the page has stabilized.
+  const saveSubmitButton = page.locator("//span[normalize-space()='Save&Submit']");
+  await saveSubmitButton.waitFor({ state: 'visible', timeout: 30000 });
+  await expect(saveSubmitButton).toBeEnabled({ timeout: 30000 });
+
   // Save & Submit
-  await safeClick(page, "//span[normalize-space()='Save&Submit']");
+  await safeClick(page, saveSubmitButton);
 });

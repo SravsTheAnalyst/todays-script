@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { safeClick, safeType, safeSelect, clickOkWhenEnabled } = require('./helpers');
+const { safeClick, safeType, safeSelect, clickOkWhenEnabled, clickToolbarButton } = require('./helpers');
 
 test.setTimeout(120_000);
 
@@ -59,7 +59,7 @@ test('Add Workflow', async ({ page }) => {
   await safeType(page.locator("//div[@id='Supplier_Pack_Size']//div[@class='widgetAndIconsWrapper']//div//div//input[@type='text']"), "1");
 
   await safeClick(page, "//span[normalize-space()='Selling Attributes']");
-  await safeClick(page, "//span[normalize-space()='Allocate StockNumber']");
+  await clickToolbarButton(page, 'Allocate StockNumber');
 
   // Allocate StockNumber also triggers a reload/settle cycle — wait for the
   // washing instructions dropdown to be visible AND enabled before touching it,
@@ -69,19 +69,9 @@ test('Add Workflow', async ({ page }) => {
   await expect(washingSelect).toBeEnabled({ timeout: 30000 });
   await safeSelect(washingSelect, { index: 7 });
 
-  // give any reload/warning popup triggered by the washing selection a
-  // moment to appear and get auto-closed before touching Allocate Barcodes
-  await page.waitForTimeout(2000);
-
   // Allocate Barcodes last — triggers reloads, so do it right before submit
-  const barcodesTab = page.locator("//span[normalize-space()='Allocate Barcodes']");
-  await barcodesTab.waitFor({ state: 'visible', timeout: 30000 });
-  await expect(barcodesTab).toBeEnabled({ timeout: 30000 });
-  await safeClick(page, barcodesTab, { retries: 6, timeout: 20000 });
+  await clickToolbarButton(page, 'Allocate Barcodes');
 
-  // Wait for a real signal the reload cycle finished: Save&Submit visible AND enabled
-  const submit = page.locator("//span[normalize-space()='Save&Submit']");
-  await submit.waitFor({ state: 'visible', timeout: 30000 });
-  await expect(submit).toBeEnabled({ timeout: 30000 });
-  await safeClick(page, submit);
+  // Save&Submit — role-based lookup, same reason as above
+  await clickToolbarButton(page, 'Save.?Submit');
 });

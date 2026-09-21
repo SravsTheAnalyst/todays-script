@@ -59,15 +59,23 @@ test('Add Workflow', async ({ page }) => {
   await safeClick(page, page.getByText('RIN', { exact: true }));
 
   // Clicking on descending for sorting the RIN Id's
-  // FIX: wait for the menu item to actually render before clicking it,
-  // then wait for the table to finish re-sorting before touching the rows.
+  // FIX: wait for the menu item to render, then wait for the table's first-row
+  // content to actually change (confirms the re-sort finished rendering)
+  // instead of waiting on network activity, which never goes idle on this app.
   const descending = page.getByText('Descending (Z-A)', { exact: true });
   await descending.waitFor({ state: 'visible', timeout: 15000 });
+
+  const firstRinCell = page.locator('table.sheet-table tbody tr td[data-col="1"]').first();
+  const beforeText = await firstRinCell.textContent().catch(() => null);
+
   await descending.click();
-  await page.waitForLoadState('networkidle').catch(() => {});
+
+  await expect(async () => {
+    const afterText = await firstRinCell.textContent();
+    expect(afterText).not.toBe(beforeText);
+  }).toPass({ timeout: 10000 }).catch(() => {});
 
   // clicking on the first rin id
-  const firstRinCell = page.locator('table.sheet-table tbody tr td[data-col="1"]').first();
   await firstRinCell.waitFor({ state: 'visible', timeout: 15000 });
   await safeClick(page, firstRinCell);
 

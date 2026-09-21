@@ -1,5 +1,4 @@
 const { expect } = require('@playwright/test');
-
 async function safeClick(page, target, timeout = 15000) {
   const el = typeof target === 'string' ? page.locator(target) : target;
   await el.waitFor({ state: 'visible', timeout });

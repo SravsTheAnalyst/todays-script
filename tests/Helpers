@@ -1,0 +1,29 @@
+const { expect } = require('@playwright/test');
+
+async function safeClick(page, target, timeout = 15000) {
+  const el = typeof target === 'string' ? page.locator(target) : target;
+  await el.waitFor({ state: 'visible', timeout });
+  await expect(el).toBeEnabled({ timeout });
+  await el.click({ timeout });
+}
+
+async function safeType(el, text) {
+  await el.waitFor({ state: 'visible' });
+  await el.type(text);
+}
+
+async function safeSelect(el, option) {
+  await el.scrollIntoViewIfNeeded().catch(() => {});
+  await el.waitFor({ state: 'visible' });
+  await el.selectOption(option);
+}
+
+async function clickOkWhenEnabled(page, timeout = 15000) {
+  const ok = page.locator("//span[normalize-space()='OK']");
+  await ok.waitFor({ state: 'visible', timeout });
+  await expect(ok).toBeEnabled({ timeout });
+  await ok.click();
+  await ok.waitFor({ state: 'detached', timeout }).catch(() => {});
+}
+
+module.exports = { safeClick, safeType, safeSelect, clickOkWhenEnabled };

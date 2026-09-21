@@ -1,44 +1,45 @@
 const { test, expect } = require('@playwright/test');
-
-// STEP (Stibo) is a slow, GWT-based app. Give the whole test more headroom.
 test.setTimeout(120_000);
 
-/**
- * Clicks a locator only after it's actually visible AND enabled,
- * and retries a couple of times if something else (an overlay, a
- * closing modal) intercepts the click. This replaces bare page.click(sel).
- */
+async function ready(locator, timeout = 15000) {
+  await locator.scrollIntoViewIfNeeded().catch(() => {});
+  await locator.waitFor({ state: 'visible', timeout });
+  return locator;
+}
+
 async function safeClick(page, target, { timeout = 15000, retries = 3 } = {}) {
   const locator = typeof target === 'string' ? page.locator(target) : target;
-  for (let attempt = 1; attempt <= retries; attempt++) {
+  for (let i = 1; i <= retries; i++) {
     try {
-      await locator.waitFor({ state: 'visible', timeout });
+      await ready(locator, timeout);
       await expect(locator).toBeEnabled({ timeout });
       await locator.click({ timeout });
       return;
     } catch (err) {
-      if (attempt === retries) throw err;
-      await page.waitForTimeout(500); // tiny backoff before retry, not a substitute for the real wait
+      if (i === retries) throw err;
+      await page.waitForTimeout(500);
     }
   }
 }
 
+async function safeType(target, text) {
+  const locator = await ready(target);
+  await locator.type(text);
+}
+
+async function safeSelect(target, option) {
+  const locator = await ready(target);
+  await locator.selectOption(option);
+}
+
+async function waitClosed(locator, timeout = 15000) {
+  await locator.waitFor({ state: 'detached', timeout }).catch(() => {});
+}
+
 test('Add Workflow', async ({ page }) => {
 
-  // Auto-dismiss the standard alert popup whenever it appears
-  await page.addLocatorHandler(
-    page.locator('i.portal-alert-popup-close-box__button'),
-    async (locator) => await locator.click()
-  );
-
-  // TODO: replace this selector with the real one for the "warning popup"
-  // that sometimes appears after completing the Phase step.
-  // Same pattern as above — Playwright will auto-close it whenever it shows up,
-  // instead of you having to guess whether it will appear.
-  await page.addLocatorHandler(
-    page.locator('.warning-popup-close-button'), // <-- put the real selector here
-    async (locator) => await locator.click()
-  );
+  await page.addLocatorHandler(page.locator('i.portal-alert-popup-close-box__button'), l => l.click());
+  await page.addLocatorHandler(page.locator('.warning-popup-close-button'), l => l.click()); // TODO: real selector
 
   // Open STEP Url
   await page.goto("https://jlp-test-step.mdm.stibosystems.com/#");
@@ -46,28 +47,28 @@ test('Add Workflow', async ({ page }) => {
   // Enter username and password
   await page.locator('#username').fill('J84620973a');
   await page.locator('#password').fill('January12345');
-
-  // Click on Sign on
   await safeClick(page, '#signOnButton');
 
-  // Click on johnlewis user
+  // click on johnlewis user
   await safeClick(page, '#JLUserPortal-link span');
 
   // Go to add workflow
-  await safeClick(
-    page,
-    "div[class='status-selector__wrapper dashboard-widget-inner'] div[title='Add PO Ops Data (Buying)']"
-  );
+  await safeClick(page, "div[class='status-selector__wrapper dashboard-widget-inner'] div[title='Add PO Ops Data (Buying)']");
 
   // Clicking on RIN indicator
   await safeClick(page, page.getByText('RIN', { exact: true }));
 
   // Clicking on descending for sorting the RIN Id's
-  await safeClick(page, page.getByText('Descending (Z-A)', { exact: true }));
+  // FIX: wait for the menu item to actually render before clicking it,
+  // then wait for the table to finish re-sorting before touching the rows.
+  const descending = page.getByText('Descending (Z-A)', { exact: true });
+  await descending.waitFor({ state: 'visible', timeout: 15000 });
+  await descending.click();
+  await page.waitForLoadState('networkidle').catch(() => {});
 
-  // Wait for the sort to actually re-render the table before grabbing the first row
+  // clicking on the first rin id
   const firstRinCell = page.locator('table.sheet-table tbody tr td[data-col="1"]').first();
-  await firstRinCell.waitFor({ state: 'visible' });
+  await firstRinCell.waitFor({ state: 'visible', timeout: 15000 });
   await safeClick(page, firstRinCell);
 
   // Goto general tab
@@ -77,16 +78,10 @@ test('Add Workflow', async ({ page }) => {
   await safeClick(page, "//*[normalize-space()='Generate Barcode']/following::input[@type='radio'][2]");
 
   // Click on Exclusive
-  const exclusive = page.locator('//select[option[@title ="Exclusive"]]');
-  await exclusive.scrollIntoViewIfNeeded();
-  await exclusive.waitFor({ state: 'visible' });
-  await exclusive.selectOption({ label: 'Not Exclusive' });
+  await safeSelect(page.locator('//select[option[@title ="Exclusive"]]'), { label: 'Not Exclusive' });
 
   // Click on Financial type
-  const financial = page.locator('//select[option[@title ="Standard Item"]]');
-  await financial.scrollIntoViewIfNeeded();
-  await financial.waitFor({ state: 'visible' });
-  await financial.selectOption({ label: 'Standard Item' });
+  await safeSelect(page.locator('//select[option[@title ="Standard Item"]]'), { label: 'Standard Item' });
 
   // Clicking on phase
   await safeClick(page, "//div[@id='Phase']//i[@title='Add Reference']");
@@ -94,19 +89,17 @@ test('Add Workflow', async ({ page }) => {
   await safeClick(page, "//i[@id='tree_expanded_node_Season-16']");
   await safeClick(page, "//div[@class='treeItem treeItem-entity treeItem-objecttype-phase']");
 
-  // Click OK, then wait for the dialog to actually be gone before touching anything else.
-  // This is the key fix for the "hierarchy tab click sometimes fails" issue —
-  // the old dialog can still be intercepting clicks for a moment after you click OK.
+  // Click OK, then wait for the dialog to actually be gone
   const okButton = page.locator("//span[normalize-space()='OK']");
   await safeClick(page, okButton);
-  await okButton.waitFor({ state: 'detached', timeout: 15000 }).catch(() => {});
+  await waitClosed(okButton);
 
   // click on allocate barcode tab
   const allocateBarcodesTab = page.locator("//span[normalize-space()='Allocate Barcodes']");
   await allocateBarcodesTab.waitFor({ state: 'visible', timeout: 15000 });
   await safeClick(page, allocateBarcodesTab);
 
-  // click on hierarchy — now safe because we waited for the previous dialog to clear
+  // click on hierarchy
   const hierarchyTab = page.locator(
     "div[id='stibo_tab_Hierarchy'] div[class='tabs-panel-tab-inner'] div span[class='gwt-InlineLabel']"
   );
@@ -122,19 +115,23 @@ test('Add Workflow', async ({ page }) => {
   // fill the initial style
   const suggestBox = page.locator("//input[@class='gwt-SuggestBox']");
   await suggestBox.waitFor({ state: 'visible' });
-  await suggestBox.type("360301");
+  const styleCode = "360301";
+  await suggestBox.type(styleCode);
 
   // click search
   await safeClick(page, "//button[@class='stibo-GraphicsButton material SearchButton']//span[@class='text']");
-
-  // Wait for search results to actually load before clicking OK.
-  // Replace this with a wait on an actual results element if one exists
-  // (e.g. a results row/table), which is more reliable than a fixed timeout.
   await page.waitForLoadState('networkidle').catch(() => {});
+
+  // FIX: wait for the actual result row to be visible before clicking it,
+  // instead of clicking OK immediately after Search (root cause of the
+  // intermittent "Initial Style" failure — same issue as sub-brand).
+  const styleResult = page.getByText(new RegExp(styleCode)).first();
+  await styleResult.waitFor({ state: 'visible', timeout: 15000 });
+  await styleResult.click();
 
   const searchOkButton = page.locator("//span[normalize-space()='OK']");
   await safeClick(page, searchOkButton);
-  await searchOkButton.waitFor({ state: 'detached', timeout: 15000 }).catch(() => {});
+  await waitClosed(searchOkButton);
 
   // click on retail price tab
   const retailPriceTab = page.locator("//span[normalize-space()='Retail Price & VAT']");
@@ -193,5 +190,4 @@ test('Add Workflow', async ({ page }) => {
 
   // Save & Submit
   await safeClick(page, "//span[normalize-space()='Save&Submit']");
-
 });

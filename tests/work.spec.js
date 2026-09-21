@@ -1,4 +1,4 @@
-const { test } = require('@playwright/test');
+const { test, expect } = require('@playwright/test');
 const { safeClick, safeType, safeSelect, clickOkWhenEnabled } = require('./helpers');
 
 test.setTimeout(120_000);
@@ -60,11 +60,28 @@ test('Add Workflow', async ({ page }) => {
 
   await safeClick(page, "//span[normalize-space()='Selling Attributes']");
   await safeClick(page, "//span[normalize-space()='Allocate StockNumber']");
-  await safeSelect(page.locator("div[data-step-component-id='WashingInstructions'] select"), { index: 7 });
+
+  // Allocate StockNumber also triggers a reload/settle cycle — wait for the
+  // washing instructions dropdown to be visible AND enabled before touching it,
+  // instead of moving straight on while the page is still mid-reload.
+  const washingSelect = page.locator("div[data-step-component-id='WashingInstructions'] select");
+  await washingSelect.waitFor({ state: 'visible', timeout: 30000 });
+  await expect(washingSelect).toBeEnabled({ timeout: 30000 });
+  await safeSelect(washingSelect, { index: 7 });
+
+  // give any reload/warning popup triggered by the washing selection a
+  // moment to appear and get auto-closed before touching Allocate Barcodes
+  await page.waitForTimeout(2000);
 
   // Allocate Barcodes last — triggers reloads, so do it right before submit
-  await safeClick(page, "//span[normalize-space()='Allocate Barcodes']");
+  const barcodesTab = page.locator("//span[normalize-space()='Allocate Barcodes']");
+  await barcodesTab.waitFor({ state: 'visible', timeout: 30000 });
+  await expect(barcodesTab).toBeEnabled({ timeout: 30000 });
+  await safeClick(page, barcodesTab, { retries: 6, timeout: 20000 });
+
+  // Wait for a real signal the reload cycle finished: Save&Submit visible AND enabled
   const submit = page.locator("//span[normalize-space()='Save&Submit']");
   await submit.waitFor({ state: 'visible', timeout: 30000 });
+  await expect(submit).toBeEnabled({ timeout: 30000 });
   await safeClick(page, submit);
 });

@@ -1,4 +1,5 @@
 const { expect } = require('@playwright/test');
+
 async function safeClick(page, target, timeout = 15000) {
   const el = typeof target === 'string' ? page.locator(target) : target;
   await el.waitFor({ state: 'visible', timeout });
@@ -25,4 +26,14 @@ async function clickOkWhenEnabled(page, timeout = 15000) {
   await ok.waitFor({ state: 'detached', timeout }).catch(() => {});
 }
 
-module.exports = { safeClick, safeType, safeSelect, clickOkWhenEnabled };
+// Toolbar action buttons (Allocate StockNumber, Allocate Barcodes, Save&Submit)
+// are real <button> elements — role-based lookup is more reliable here than
+// a text/tag XPath, which breaks if the internal markup shifts slightly.
+async function clickToolbarButton(page, name, timeout = 15000) {
+  const btn = page.getByRole('button', { name: new RegExp(name) });
+  await btn.waitFor({ state: 'visible', timeout });
+  await expect(btn).toBeEnabled({ timeout });
+  await btn.click({ timeout });
+}
+
+module.exports = { safeClick, safeType, safeSelect, clickOkWhenEnabled, clickToolbarButton };
